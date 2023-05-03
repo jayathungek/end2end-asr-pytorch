@@ -7,7 +7,9 @@ dependencies:
     - numpy=1.23.1
     - pip=22.3.1
     - pip:
-      - https://download.pytorch.org/whl/cu113/torch-1.10.0%2Bcu113-cp39-cp39-linux_x86_64.whl
+      - https://download.pytorch.org/whl/cu111/torch-1.10.0%2Bcu111-cp39-cp39-linux_x86_64.whl
+      - pyyaml
+      - sox
       - ffmpeg-python==0.2.0
       - pip-chill==1.0.1
       - librosa==0.9.2
@@ -15,3 +17,6 @@ dependencies:
       - python-Levenshtein
       - pandas
       - matplotlib
+      - wandb
+      #- torchaudio==0.10.0+cu111 --no-deps  -f https://download.pytorch.org/whl/cu111/torch_stable.html
+
