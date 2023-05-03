@@ -8,8 +8,10 @@ from utils.metrics import calculate_metrics, calculate_cer, calculate_wer
 from torch.autograd import Variable
 import torch
 import logging
+import wandb
 
 import sys
+
 
 class Trainer():
     """
@@ -18,7 +20,18 @@ class Trainer():
     def __init__(self):
         logging.info("Trainer is initialized")
 
-    def train(self, model, train_loader, train_sampler, valid_loader_list, opt, loss_type, start_epoch, num_epochs, label2id, id2label, last_metrics=None):
+    def train(self, model,
+              train_loader,
+              train_sampler,
+              valid_loader_list,
+              opt,
+              loss_type,
+              start_epoch,
+              num_epochs,
+              label2id,
+              id2label,
+              augmentor,
+              last_metrics=None):
         """
         Training
         args:
@@ -30,6 +43,12 @@ class Trainer():
             num_epochs: last epoch
             last_metrics: (if resume)
         """
+        if constant.args.wandb:
+            run_name_elements = augmentor.config["run_name"].split("_")
+            project_name = "_".join(run_name_elements[:2])  # Use experiment and kind names
+            wandb.init(project=project_name, reinit=True, resume=False)
+            wandb.run.name = augmentor.config["run_name"]
+            print(f"initialising run: {wandb.run.name}")
         history = []
         start_time = time.time()
         best_valid_loss = 1000000000 if last_metrics is None else last_metrics['valid_loss']
@@ -196,6 +215,16 @@ class Trainer():
             metrics["valid_wer"] = total_valid_wer
             metrics["history"] = history
             history.append(metrics)
+            if constant.args.wandb:
+                wandb.log({
+                    "train_loss": total_loss/(len(train_loader)),
+                    "valid_loss": total_valid_loss/(len(valid_loader)),
+                    "train_cer": total_cer,
+                    "train_wer": total_wer,
+                    "valid_cer": total_valid_cer,
+                    "valid_wer": total_valid_wer
+                    },
+                    step=epoch+1)
 
             if epoch % constant.args.save_every == 0:
                 save_model(model, (epoch+1), opt, metrics,
@@ -211,3 +240,5 @@ class Trainer():
                 logging.info("SHUFFLE")
                 print("SHUFFLE")
                 train_sampler.shuffle(epoch)
+        if constant.args.wandb:
+            wandb.join()
