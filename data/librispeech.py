@@ -11,9 +11,9 @@ parser = argparse.ArgumentParser(description='Processes and downloads LibriSpeec
 parser.add_argument("--target-dir", default='LibriSpeech_dataset/', type=str, help="Directory to store the dataset.")
 parser.add_argument('--sample-rate', default=16000, type=int, help='Sample rate')
 parser.add_argument('--files-to-use', default="train-clean-100.tar.gz,"
-                                              "train-clean-360.tar.gz,train-other-500.tar.gz,"
-                                              "dev-clean.tar.gz,dev-other.tar.gz,"
-                                              "test-clean.tar.gz,test-other.tar.gz", type=str,
+                                              # "train-clean-360.tar.gz,train-other-500.tar.gz,dev-other.tar.gz,test-other.tar.gz"
+                                              "dev-clean.tar.gz,"
+                                              "test-clean.tar.gz", type=str,
                     help='list of file names to download')
 parser.add_argument('--min-duration', default=1, type=int,
                     help='Prunes training samples shorter than the min duration (given in seconds, default 1)')
