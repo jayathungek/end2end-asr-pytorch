@@ -116,3 +116,12 @@ dmypy.json
 .pyre/
 
 env_setup_done
+failed_files*.txt
+log/
+*.ptf
+*.pth
+*.csv
+*.csv.*
+tmp.py
+audio_aug/
+.idea/
