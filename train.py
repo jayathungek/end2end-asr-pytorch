@@ -2,6 +2,7 @@ import json
 import time
 import math
 import numpy as np
+import wandb
 
 import torch
 import torch.nn as nn
@@ -17,19 +18,22 @@ import logging
 import sys
 import os
 
-if __name__ == '__main__':
+
+def main(augmentor):
+
     args = constant.args
-    print("="*50)
+    print("=" * 50)
     print("THE EXPERIMENT LOG IS SAVED IN: " + "log/" + args.name)
     print("TRAINING MANIFEST: ", args.train_manifest_list)
     print("VALID MANIFEST: ", args.valid_manifest_list)
     print("TEST MANIFEST: ", args.test_manifest_list)
-    print("="*50)
+    print("=" * 50)
 
     if not os.path.exists("./log"):
         os.mkdir("./log")
 
-    logging.basicConfig(filename="log/" + args.name, filemode='w+', format='%(asctime)s - %(message)s', level=logging.INFO)
+    logging.basicConfig(filename="log/" + args.name, filemode='w+', format='%(asctime)s - %(message)s',
+                        level=logging.INFO)
 
     audio_conf = dict(sample_rate=args.sample_rate,
                       window_size=args.window_size,
@@ -59,22 +63,25 @@ if __name__ == '__main__':
     # label2id = dict([(labels[i], i) for i in range(len(labels))])
     # id2label = dict([(i, labels[i]) for i in range(len(labels))])
 
-    train_data = SpectrogramDataset(audio_conf, manifest_filepath_list=args.train_manifest_list, label2id=label2id, normalize=True, augment=args.augment)
+    train_data = SpectrogramDataset(audio_conf, manifest_filepath_list=args.train_manifest_list, label2id=label2id,
+                                    normalize=True, augment=args.augment)
     train_sampler = BucketingSampler(train_data, batch_size=args.batch_size)
     train_loader = AudioDataLoader(
-        train_data, num_workers=args.num_workers, batch_sampler=train_sampler)
+        train_data, num_workers=args.num_workers, batch_sampler=train_sampler, augmentor=augmentor, audio_conf=audio_conf)
 
     valid_loader_list, test_loader_list = [], []
     for i in range(len(args.valid_manifest_list)):
-        valid_data = SpectrogramDataset(audio_conf, manifest_filepath_list=[args.valid_manifest_list[i]], label2id=label2id,
+        valid_data = SpectrogramDataset(audio_conf, manifest_filepath_list=[args.valid_manifest_list[i]],
+                                        label2id=label2id,
                                         normalize=True, augment=False)
-        valid_loader = AudioDataLoader(valid_data, num_workers=args.num_workers, batch_size=args.batch_size)
+        valid_loader = AudioDataLoader(valid_data, num_workers=args.num_workers, batch_size=args.batch_size, augmentor=augmentor, audio_conf=audio_conf)
         valid_loader_list.append(valid_loader)
 
     for i in range(len(args.test_manifest_list)):
-        test_data = SpectrogramDataset(audio_conf, manifest_filepath_list=[args.test_manifest_list[i]], label2id=label2id,
-                                    normalize=True, augment=False)
-        test_loader = AudioDataLoader(test_data, num_workers=args.num_workers)
+        test_data = SpectrogramDataset(audio_conf, manifest_filepath_list=[args.test_manifest_list[i]],
+                                       label2id=label2id,
+                                       normalize=True, augment=False)
+        test_loader = AudioDataLoader(test_data, num_workers=args.num_workers, augmentor=augmentor, audio_conf=audio_conf)
         test_loader_list.append(test_loader)
 
     start_epoch = 0
@@ -103,7 +110,7 @@ if __name__ == '__main__':
             opt = init_optimizer(constant.args, model, "noam")
         else:
             logging.info("The model is not supported, check args --h")
-    
+
     loss_type = args.loss
 
     if constant.USE_CUDA:
@@ -113,4 +120,9 @@ if __name__ == '__main__':
     num_epochs = constant.args.epochs
 
     trainer = Trainer()
-    trainer.train(model, train_loader, train_sampler, valid_loader_list, opt, loss_type, start_epoch, num_epochs, label2id, id2label, metrics)
+    trainer.train(model, train_loader, train_sampler, valid_loader_list, opt, loss_type, start_epoch, num_epochs,
+                  label2id, id2label, augmentor, metrics)
+
+
+if __name__ == '__main__':
+    main(None)

@@ -69,26 +69,7 @@ class SpectrogramParser(AudioParser):
             if add_noise:
                 y = self.noiseInjector.inject_noise(y)
 
-        n_fft = int(self.sample_rate * self.window_size)
-        win_length = n_fft
-        hop_length = int(self.sample_rate * self.window_stride)
-
-        # Short-time Fourier transform (STFT)
-        D = librosa.stft(y, n_fft=n_fft, hop_length=hop_length,
-                         win_length=win_length, window=self.window)
-        spect, phase = librosa.magphase(D)
-
-        # S = log(S+1)
-        spect = np.log1p(spect)
-        spect = torch.FloatTensor(spect)
-
-        if self.normalize:
-            mean = spect.mean()
-            std = spect.std()
-            spect.add_(-mean)
-            spect.div_(std)
-
-        return spect
+        return y
 
     def parse_transcript(self, transcript_path):
         raise NotImplementedError
@@ -128,9 +109,9 @@ class SpectrogramDataset(Dataset, SpectrogramParser):
         ids = self.ids_list[random_id]
         sample = ids[index % len(ids)]
         audio_path, transcript_path = sample[0], sample[1]
-        spect = self.parse_audio(audio_path)[:,:constant.args.src_max_len]
+        signal = self.parse_audio(audio_path)#[:,:constant.args.src_max_len]
         transcript = self.parse_transcript(transcript_path)
-        return spect, transcript
+        return transcript, signal
 
     def parse_transcript(self, transcript_path):
         with open(transcript_path, 'r', encoding='utf8') as transcript_file:
@@ -179,45 +160,97 @@ class NoiseInjection(object):
         return data
 
 
-def _collate_fn(batch):
-    def func(p):
-        return p[0].size(1)
+class CollateFn:
+    def __init__(self, audio_conf, augmentor=None):
+        if augmentor is not None:
+            self.augmentor = augmentor.get(self.get_mel)
+        else:
+            self.augmentor = None
+        self.window_stride = audio_conf['window_stride']
+        self.window_size = audio_conf['window_size']
+        self.sample_rate = audio_conf['sample_rate']
+        self.window = windows.get(audio_conf['window'], windows['hamming'])
+        self.normalize = True
 
-    def func_tgt(p):
-        return len(p[1])
+    def get_mel(self, signal):
+        if not isinstance(signal, np.ndarray):
+            signal = signal.numpy()
+        n_fft = int(self.sample_rate * self.window_size)
+        win_length = n_fft
+        hop_length = int(self.sample_rate * self.window_stride)
 
-    # descending sorted
-    batch = sorted(batch, key=lambda sample: sample[0].size(1), reverse=True)
+        # Short-time Fourier transform (STFT)
+        D = librosa.stft(signal, n_fft=n_fft, hop_length=hop_length,
+                         win_length=win_length, window=self.window)
+        spect, phase = librosa.magphase(D)
 
-    max_seq_len = max(batch, key=func)[0].size(1)
-    freq_size = max(batch, key=func)[0].size(0)
-    max_tgt_len = len(max(batch, key=func_tgt)[1])
+        # S = log(S+1)
+        spect = np.log1p(spect)
+        spect = torch.FloatTensor(spect)
 
-    inputs = torch.zeros(len(batch), 1, freq_size, max_seq_len)
-    input_sizes = torch.IntTensor(len(batch))
-    input_percentages = torch.FloatTensor(len(batch))
+        if self.normalize:
+            mean = spect.mean()
+            std = spect.std()
+            spect.add_(-mean)
+            spect.div_(std)
 
-    targets = torch.zeros(len(batch), max_tgt_len).long()
-    target_sizes = torch.IntTensor(len(batch))
+        return spect[:,:constant.args.src_max_len]
 
-    for x in range(len(batch)):
-        sample = batch[x]
-        input_data = sample[0]
-        target = sample[1]
-        seq_length = input_data.size(1)
-        input_sizes[x] = seq_length
-        inputs[x][0].narrow(1, 0, seq_length).copy_(input_data)
-        input_percentages[x] = seq_length / float(max_seq_len)
-        target_sizes[x] = len(target)
-        targets[x][:len(target)] = torch.IntTensor(target)
+    def func(self, p):
+        return p[1].size(1)
 
-    return inputs, targets, input_percentages, input_sizes, target_sizes
+    def func_tgt(self, p):
+        return len(p[0])
+
+    def __call__(self, batch):
+        if self.augmentor is not None:
+            # augment the batch
+            # no need for self.get_mel, augmenter will handle this
+            batch = self.augmentor.augment_batch(batch)
+            batch = [
+                [labels, spec.squeeze(0)] if spec.shape[0] == 1
+                else [labels, spec]
+                for labels, spec in batch
+            ]
+        else:
+            batch = [[labels, self.get_mel(signal)] for labels, signal in batch]
+
+        # descending sorted
+
+        batch = sorted(batch, key=lambda sample: sample[1].size(1), reverse=True)
+        max_seq_len = max(batch, key=self.func)[1].size(1)
+        freq_size = max(batch, key=self.func)[1].size(0)
+        max_tgt_len = len(max(batch, key=self.func_tgt)[0])
+
+        inputs = torch.zeros(len(batch), 1, freq_size, max_seq_len)
+        input_sizes = torch.IntTensor(len(batch))
+        input_percentages = torch.FloatTensor(len(batch))
+
+        targets = torch.zeros(len(batch), max_tgt_len).long()
+        target_sizes = torch.IntTensor(len(batch))
+
+        for x in range(len(batch)):
+            sample = batch[x]
+            input_data = sample[1]
+            target = sample[0]
+            seq_length = input_data.size(1)
+            input_sizes[x] = seq_length
+            inputs[x][0].narrow(1, 0, seq_length).copy_(input_data)
+            input_percentages[x] = seq_length / float(max_seq_len)
+            target_sizes[x] = len(target)
+            targets[x][:len(target)] = torch.IntTensor(target)
+
+        return inputs, targets, input_percentages, input_sizes, target_sizes
 
 
 class AudioDataLoader(DataLoader):
     def __init__(self, *args, **kwargs):
+        aug = kwargs.get("augmentor", None)
+        audio_conf = kwargs.get("audio_conf", None)
+        del kwargs["augmentor"]
+        del kwargs["audio_conf"]
         super(AudioDataLoader, self).__init__(*args, **kwargs)
-        self.collate_fn = _collate_fn
+        self.collate_fn = CollateFn(audio_conf, augmentor=aug)
 
 
 class BucketingSampler(Sampler):
