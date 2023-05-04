@@ -94,8 +94,8 @@ parser.add_argument('--parallel', action='store_true', help='Parallelize the mod
 # shuffle
 parser.add_argument('--shuffle', action='store_true', help='Shuffle')
 
-torch.manual_seed(123456)
-torch.cuda.manual_seed_all(123456)
+# torch.manual_seed(123456)
+# torch.cuda.manual_seed_all(123456)
 
 args = parser.parse_args()
 USE_CUDA = args.cuda
