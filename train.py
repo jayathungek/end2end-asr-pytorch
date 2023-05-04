@@ -74,14 +74,14 @@ def main(augmentor):
         valid_data = SpectrogramDataset(audio_conf, manifest_filepath_list=[args.valid_manifest_list[i]],
                                         label2id=label2id,
                                         normalize=True, augment=False)
-        valid_loader = AudioDataLoader(valid_data, num_workers=args.num_workers, batch_size=args.batch_size, augmentor=augmentor, audio_conf=audio_conf)
+        valid_loader = AudioDataLoader(valid_data, num_workers=args.num_workers, batch_size=args.batch_size, augmentor=None, audio_conf=audio_conf)
         valid_loader_list.append(valid_loader)
 
     for i in range(len(args.test_manifest_list)):
         test_data = SpectrogramDataset(audio_conf, manifest_filepath_list=[args.test_manifest_list[i]],
                                        label2id=label2id,
                                        normalize=True, augment=False)
-        test_loader = AudioDataLoader(test_data, num_workers=args.num_workers, augmentor=augmentor, audio_conf=audio_conf)
+        test_loader = AudioDataLoader(test_data, num_workers=args.num_workers, augmentor=None, audio_conf=audio_conf)
         test_loader_list.append(test_loader)
 
     start_epoch = 0
